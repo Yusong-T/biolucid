@@ -5,6 +5,7 @@ Data models for storing and managing bioLUCID analysis results.
 from dataclasses import dataclass
 from typing import Dict, Union
 import pandas as pd
+import numpy as np
 
 @dataclass
 class bioLUCIDResult:
@@ -40,23 +41,23 @@ class bioLUCIDResult:
     def _validate_scores(self):
         """Validate score values."""
         # Global score validation
-        if not 0 <= self.Global_b_score <= 1:
-            raise ValueError("Global_b_score must be between 0 and 1")
-        if self.Global_q_sh_score < 0:
-            raise ValueError("Global_q_sh_score must be non-negative")
-        if self.Global_q_sp_score < 0:
-            raise ValueError("Global_q_sp_score must be non-negative")
+        if not (0 <= self.Global_b_score <= 1 or np.isnan(self.Global_b_score)):
+            raise ValueError("Global_b_score must be between 0 and 1 or NaN")
+        if not (self.Global_q_sh_score >= 0 or np.isnan(self.Global_q_sh_score)):
+            raise ValueError("Global_q_sh_score must be non-negative or NaN")
+        if not (self.Global_q_sp_score >= 0 or np.isnan(self.Global_q_sp_score)):
+            raise ValueError("Global_q_sp_score must be non-negative or NaN")
             
         # Per-batch score validation
         for batch, score in self.b_score_per_batch.items():
-            if not 0 <= score <= 1:
-                raise ValueError(f"b_score for batch {batch} must be between 0 and 1")
+            if not (0 <= score <= 1 or np.isnan(score)):
+                raise ValueError(f"b_score for batch {batch} must be between 0 and 1 or NaN")
         for batch, score in self.q_sh_score_per_batch.items():
-            if score < 0:
-                raise ValueError(f"q_sh_score for batch {batch} must be non-negative")
+            if not (score >= 0 or np.isnan(score)):
+                raise ValueError(f"q_sh_score for batch {batch} must be non-negative or NaN")
         for batch, score in self.q_sp_score_per_batch.items():
-            if score < 0:
-                raise ValueError(f"q_sp_score for batch {batch} must be non-negative")
+            if not (score >= 0 or np.isnan(score)):
+                raise ValueError(f"q_sp_score for batch {batch} must be non-negative or NaN")
     
     def to_dict(self) -> Dict:
         return {

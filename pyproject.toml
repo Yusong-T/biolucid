@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biolucid"
+dynamic = ["version"]
+authors = [
+  { name="Chuhanwen Sun", email="silaschw0817@gmail.com" },
+]
+description = "A tool for batch effect analysis in single-cell RNA sequencing data."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scanpy",
+    "scvi-tools",
+    "matplotlib",
+    "seaborn",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+dynamic = {version = {attr = "biolucid.__version__"}}

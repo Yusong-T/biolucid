@@ -10,6 +10,7 @@ from typing import Tuple, Dict
 import numpy as np
 import pandas as pd
 import scipy.sparse
+import itertools
 import scanpy as sc
 from anndata import AnnData
 
@@ -55,34 +56,71 @@ def validate_and_filter_celltypes(adata: AnnData, params: Dict) -> AnnData:
         adata.obs[params['celltype_key']]
     )
     
-    # Find cell types that have sufficient cells in ALL batches
     min_cells = params.get('min_cells', 20)
-    valid_celltypes = []
     
-    for celltype in batch_celltype_counts.columns:
-        counts = batch_celltype_counts[celltype]
-        if all(counts >= min_cells):
-            valid_celltypes.append(celltype)
+    # 1. Find top 10 most frequent cell types globally
+    top_celltypes = batch_celltype_counts.sum(axis=0).nlargest(10).index.tolist()
     
-    if len(valid_celltypes) < 2:
-        # Prepare detailed error message
-        insufficient_counts = batch_celltype_counts.loc[:, ~batch_celltype_counts.columns.isin(valid_celltypes)]
-        error_msg = (
-            f"Found only {len(valid_celltypes)} cell type(s) with >= {min_cells} cells in all batches. "
-            f"At least 2 valid cell types are required.\n"
-            f"Cell counts per batch:\n{insufficient_counts}"
+    total_samples = len(batch_celltype_counts.index)
+    total_celltypes = len(batch_celltype_counts.columns)
+    
+    best_score = -1
+    best_comb = None
+    best_samples = None
+    
+    # 2. Iterate through power set of top 10 cell types (combinations of size >= 2)
+    for r in range(2, len(top_celltypes) + 1):
+        for comb in itertools.combinations(top_celltypes, r):
+            comb_list = list(comb)
+            
+            # 3. Find samples having >= min_cells for all cell types in this combination
+            sub_counts = batch_celltype_counts[comb_list]
+            valid_samples_mask = (sub_counts >= min_cells).all(axis=1)
+            valid_samples = batch_celltype_counts.index[valid_samples_mask].tolist()
+            
+            if len(valid_samples) < 2:
+                continue
+                
+            # 4. Calculate maximum selection score
+            #score = 0.2 * (len(comb_list) / total_celltypes) + 0.8 * (len(valid_samples) / total_samples)  # linear model
+            score = 0.5 * (1 - 1 / len(comb_list)) + 0.5 * (len(valid_samples) / total_samples)     # non-linear model, considering variance drop-off
+
+            if score > best_score:
+                best_score = score
+                best_comb = comb_list
+                best_samples = valid_samples
+                
+    if best_comb is None:
+        raise ValueError(
+            f"Could not find any combination of >=2 cell types present in >=2 samples "
+            f"with at least {min_cells} cells each."
         )
-        raise ValueError(error_msg)
+        
+    valid_celltypes = best_comb
     
-    # Filter data to keep only valid cell types
-    mask = adata.obs[params['celltype_key']].isin(valid_celltypes)
+    # 5. Filter data to keep only selected cell types AND selected samples
+    mask = (adata.obs[params['celltype_key']].isin(valid_celltypes)) & \
+           (adata.obs[params['batch_key']].isin(best_samples))
     adata_ct_selection = adata[mask].copy()
     
-    # Log detailed information
-    logger.info(f"Retained {len(adata_ct_selection)} / {len(adata)} cells after cell type filtering")
+    # Store dropped samples in .uns just in case downstream tools want to access them
+    dropped_samples = set(batch_celltype_counts.index) - set(best_samples)
+    adata_ct_selection.uns['biolucid_dropped_samples'] = list(dropped_samples)
+    
+    # Tweak 2 & Logging
+    logger.info(f"Optimization finished: Selected {len(valid_celltypes)} cell types and {len(best_samples)} samples (Score: {best_score:.4f})")
+    logger.info(f"Retained {len(adata_ct_selection)} / {len(adata)} cells after filtering")
     logger.info(f"Retained cell types: {valid_celltypes}")
+    logger.info(f"Retained samples: {best_samples}")
+    
+    if dropped_samples:
+        logger.warning("--- EARLY REJECTION REPORT ---")
+        for ds in dropped_samples:
+            logger.warning(f"Sample {ds}: b_score = N/A | Recommendation = Drop (Missing core biological populations)")
+        logger.warning("------------------------------")
+        
     logger.info("Cell counts per batch for retained cell types:")
-    retained_counts = batch_celltype_counts.loc[:, valid_celltypes]
+    retained_counts = batch_celltype_counts.loc[best_samples, valid_celltypes]
     for batch in retained_counts.index:
         logger.info(f"Batch {batch}:")
         for celltype in valid_celltypes:

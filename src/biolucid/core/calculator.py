@@ -230,9 +230,9 @@ def calculate_global_scores(
     Returns:
         Tuple of (global_q_sh, global_q_sp, global_b_score)
     """
-    global_q_sh = np.mean(list(q_sh_per_sample.values()))
-    global_q_sp = np.mean(list(q_sp_per_sample.values()))
-    global_b_score = np.mean(list(b_scores_per_sample.values()))
+    global_q_sh = float(np.nanmean(list(q_sh_per_sample.values())))
+    global_q_sp = float(np.nanmean(list(q_sp_per_sample.values())))
+    global_b_score = float(np.nanmean(list(b_scores_per_sample.values())))
     
     return global_q_sh, global_q_sp, global_b_score
 
@@ -283,6 +283,13 @@ def bioLUCID_calculation(
     q_sh_per_sample = calculate_q_sh_per_sample(sigma_s)
     q_sp_per_sample = calculate_q_sp_per_sample(residuals_df)
     b_scores_per_sample = calculate_b_scores_per_sample(q_sh_per_sample, q_sp_per_sample)
+    
+    # Inject early rejected samples as NaN
+    if 'biolucid_dropped_samples' in adata.uns:
+        for dropped_sample in adata.uns['biolucid_dropped_samples']:
+            q_sh_per_sample[dropped_sample] = np.nan
+            q_sp_per_sample[dropped_sample] = np.nan
+            b_scores_per_sample[dropped_sample] = np.nan
     
     # Calculate global scores
     global_q_sh, global_q_sp, global_b_score = calculate_global_scores(

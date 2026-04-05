@@ -47,6 +47,10 @@ def results_to_df(results) -> Tuple[pd.DataFrame, pd.DataFrame]:
         include_lowest=True
     )
     
+    # Fill NA recommendations (from early rejected samples) with 'Drop'
+    # Casting to object ensures we don't hit Categorical issues in newer pandas versions
+    per_sample_results_df['recommendation'] = per_sample_results_df['recommendation'].astype(object).fillna('Drop')
+    
     return global_results_df, per_sample_results_df
 
 def plot_scatter_analysis(results_df, figsize=(5, 5)):
@@ -86,6 +90,8 @@ def plot_scatter_analysis(results_df, figsize=(5, 5)):
 
     # --- Annotations ---
     for idx, row in results_df.iterrows():
+        if pd.isna(row['q_sp_score_per_batch']) or pd.isna(row['q_sh_score_per_batch']):
+            continue
         plt.annotate(
             idx,
             (row['q_sp_score_per_batch'], row['q_sh_score_per_batch']),
