@@ -62,7 +62,6 @@ def validate_and_filter_celltypes(adata: AnnData, params: Dict) -> AnnData:
     top_celltypes = batch_celltype_counts.sum(axis=0).nlargest(10).index.tolist()
     
     total_samples = len(batch_celltype_counts.index)
-    total_celltypes = len(batch_celltype_counts.columns)
     
     best_score = -1
     best_comb = None
@@ -82,8 +81,9 @@ def validate_and_filter_celltypes(adata: AnnData, params: Dict) -> AnnData:
                 continue
                 
             # 4. Calculate maximum selection score
-            #score = 0.2 * (len(comb_list) / total_celltypes) + 0.8 * (len(valid_samples) / total_samples)  # linear model
-            score = 0.5 * (1 - 1 / len(comb_list)) + 0.5 * (len(valid_samples) / total_samples)     # non-linear model, considering variance drop-off
+            # Motivation: both score components are bounded between 0 and 1 and monotonous in the desirable properties (# samples kept, # cell types kept). 
+            # This score over-penalizes having few cell types (1 cell type -> score = 0, 2 cell types -> score = 0.5)
+            score = 0.5 * (1 - 1 / len(comb_list)) + 0.5 * (len(valid_samples) / total_samples)
 
             if score > best_score:
                 best_score = score
@@ -107,7 +107,7 @@ def validate_and_filter_celltypes(adata: AnnData, params: Dict) -> AnnData:
     dropped_samples = set(batch_celltype_counts.index) - set(best_samples)
     adata_ct_selection.uns['biolucid_dropped_samples'] = list(dropped_samples)
     
-    # Tweak 2 & Logging
+    # Logging
     logger.info(f"Optimization finished: Selected {len(valid_celltypes)} cell types and {len(best_samples)} samples (Score: {best_score:.4f})")
     logger.info(f"Retained {len(adata_ct_selection)} / {len(adata)} cells after filtering")
     logger.info(f"Retained cell types: {valid_celltypes}")
